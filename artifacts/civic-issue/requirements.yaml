@@ -1,0 +1,19 @@
+packages:
+  "framer-motion": "For smooth page transitions and beautiful entry animations"
+  "react-hook-form": "For robust form state management"
+  "@hookform/resolvers": "For Zod schema validation integration"
+  "date-fns": "For formatting submittedAt and resolvedAt timestamps"
+
+images:
+  - path: "artifacts/civic-issue/public/images/hero-bg.png"
+    description: "Clean modern abstract background with subtle civic architecture and city skyline motifs in professional blue and white tones, very subtle and professional"
+    aspect_ratio: "16:9"
+  - path: "artifacts/civic-issue/public/images/auth-bg.png"
+    description: "Abstract geometric shapes in professional governmental blue tones on a clean white background, minimalistic"
+    aspect_ratio: "3:4"
+
+notes:
+  - "The API is available via standard /api endpoints as defined in the OpenAPI spec."
+  - "Using the generated TanStack Query hooks from @workspace/api-client-react."
+  - "Using wouter for routing and framer-motion for animations."
+  - "Admin auth uses a simple token saved to localStorage."

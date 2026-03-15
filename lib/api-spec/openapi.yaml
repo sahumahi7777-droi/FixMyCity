@@ -1,22 +1,26 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FixMyCity Civic Issue Reporter API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: issues
+    description: Civic issue operations
+  - name: leaderboard
+    description: Leaderboard operations
+  - name: admin
+    description: Admin operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +28,209 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /issues:
+    get:
+      operationId: getIssues
+      tags: [issues]
+      summary: Get all civic issues (community feed)
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [reported, in-progress, resolved]
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: number
+      responses:
+        "200":
+          description: List of issues
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueListResponse"
+    post:
+      operationId: createIssue
+      tags: [issues]
+      summary: Report a new civic issue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueRequest"
+      responses:
+        "201":
+          description: Issue created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+        "409":
+          description: Duplicate issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /issues/{id}:
+    get:
+      operationId: getIssueById
+      tags: [issues]
+      summary: Get a single issue by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Issue details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /issues/{id}/upvote:
+    post:
+      operationId: upvoteIssue
+      tags: [issues]
+      summary: Upvote (increment report count) for an existing issue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+
+  /issues/{id}/status:
+    patch:
+      operationId: updateIssueStatus
+      tags: [admin]
+      summary: Admin - Update issue status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStatusRequest"
+      responses:
+        "200":
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+
+  /leaderboard:
+    get:
+      operationId: getLeaderboard
+      tags: [leaderboard]
+      summary: Get user leaderboard ranked by report count
+      responses:
+        "200":
+          description: Leaderboard entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeaderboardResponse"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [issues]
+      summary: Get aggregate stats (total reports, resolved count, categories)
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+
+  /admin/login:
+    post:
+      operationId: adminLogin
+      tags: [admin]
+      summary: Admin login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminLoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminLoginResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/issues:
+    get:
+      operationId: adminGetAllIssues
+      tags: [admin]
+      summary: Admin - Get all issues with full details
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: All issues
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IssueListResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +241,199 @@ components:
       required:
         - status
 
+    Issue:
+      type: object
+      properties:
+        id:
+          type: number
+        title:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        digiPin:
+          type: string
+        location:
+          type: string
+        reporterName:
+          type: string
+        reporterEmail:
+          type: string
+        reporterContact:
+          type: string
+        status:
+          type: string
+          enum: [reported, in-progress, resolved]
+        reportCount:
+          type: number
+        adminNotes:
+          type: string
+          nullable: true
+        submittedAt:
+          type: string
+        resolvedAt:
+          type: string
+          nullable: true
+      required:
+        - id
+        - title
+        - category
+        - description
+        - digiPin
+        - location
+        - reporterName
+        - reporterEmail
+        - reporterContact
+        - status
+        - reportCount
+        - submittedAt
+
+    CreateIssueRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        digiPin:
+          type: string
+        location:
+          type: string
+        reporterName:
+          type: string
+        reporterEmail:
+          type: string
+        reporterContact:
+          type: string
+      required:
+        - title
+        - category
+        - description
+        - digiPin
+        - location
+        - reporterName
+        - reporterEmail
+        - reporterContact
+
+    UpdateStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [reported, in-progress, resolved]
+        adminNotes:
+          type: string
+      required:
+        - status
+
+    IssueListResponse:
+      type: object
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/Issue"
+        total:
+          type: number
+      required:
+        - issues
+        - total
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: number
+        reporterName:
+          type: string
+        reporterEmail:
+          type: string
+        reportCount:
+          type: number
+        resolvedCount:
+          type: number
+        points:
+          type: number
+      required:
+        - rank
+        - reporterName
+        - reporterEmail
+        - reportCount
+        - resolvedCount
+        - points
+
+    LeaderboardResponse:
+      type: object
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeaderboardEntry"
+      required:
+        - entries
+
+    StatsResponse:
+      type: object
+      properties:
+        totalReports:
+          type: number
+        resolvedCount:
+          type: number
+        inProgressCount:
+          type: number
+        reportedCount:
+          type: number
+        categoryBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              category:
+                type: string
+              count:
+                type: number
+            required:
+              - category
+              - count
+      required:
+        - totalReports
+        - resolvedCount
+        - inProgressCount
+        - reportedCount
+        - categoryBreakdown
+
+    AdminLoginRequest:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+      required:
+        - username
+        - password
+
+    AdminLoginResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        token:
+          type: string
+      required:
+        - success
+        - token
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+        - message
