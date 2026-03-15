@@ -1,211 +1,486 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
-import { format } from "date-fns";
-import { useQueryClient } from "@tanstack/react-query";
-import { Filter, Search, Loader2, Save } from "lucide-react";
-import { useAdminGetAllIssues, useUpdateIssueStatus } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
-import { CATEGORIES, STATUS_CONFIG } from "@/lib/constants";
+import {
+  getAllIssues,
+  updateIssue,
+  deleteIssue,
+  CivicIssue,
+  getAdminCredentials,
+  updateAdminCredentials,
+} from "../lib/dataManager";
 
-export default function AdminDashboard() {
-  const [location, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [categoryFilter, setCategoryFilter] = useState<string>("all");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editStatus, setEditStatus] = useState<any>("");
-  const [editNotes, setEditNotes] = useState("");
-
-  useEffect(() => {
-    if (!localStorage.getItem("admin_token")) {
-      setLocation("/admin");
-    }
-  }, [location, setLocation]);
-
-  const { data, isLoading } = useAdminGetAllIssues({
-    status: statusFilter !== "all" ? statusFilter : undefined,
-    category: categoryFilter !== "all" ? categoryFilter : undefined,
+export function AdminDashboard({ onLogout }: { onLogout: () => void }) {
+  const [issues, setIssues] = useState<CivicIssue[]>([]);
+  const [filteredIssues, setFilteredIssues] = useState<CivicIssue[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [selectedStatus, setSelectedStatus] = useState<string>("All");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<Partial<CivicIssue>>({});
+  const [showCredentialModal, setShowCredentialModal] = useState(false);
+  const [newCredentials, setNewCredentials] = useState({
+    username: "",
+    password: "",
   });
 
-  const updateMutation = useUpdateIssueStatus();
+  const categories = [
+    "All",
+    "Road & Infrastructure",
+    "Waste Management",
+    "Water Supply",
+    "Street Lighting",
+    "Public Safety",
+  ];
 
-  const handleEdit = (issue: any) => {
-    setEditingId(issue.id);
-    setEditStatus(issue.status);
-    setEditNotes(issue.adminNotes || "");
+  const statuses = ["All", "reported", "in-progress", "resolved"];
+
+  // Load issues on mount
+  useEffect(() => {
+    loadIssues();
+  }, []);
+
+  // Filter issues when category or status changes
+  useEffect(() => {
+    filterIssues();
+  }, [selectedCategory, selectedStatus, issues]);
+
+  const loadIssues = () => {
+    const allIssues = getAllIssues();
+    setIssues(allIssues);
   };
 
-  const handleSave = (id: number) => {
-    updateMutation.mutate({
-      id,
-      data: { status: editStatus, adminNotes: editNotes }
-    }, {
-      onSuccess: () => {
-        toast({ title: "Issue Updated", description: `Issue #${id} status changed to ${editStatus}.` });
-        setEditingId(null);
-        queryClient.invalidateQueries({ queryKey: ["/api/admin/issues"] });
-        queryClient.invalidateQueries({ queryKey: ["/api/issues"] });
-      },
-      onError: (err: any) => {
-        toast({ variant: "destructive", title: "Update Failed", description: err.message });
-      }
+  const filterIssues = () => {
+    let filtered = issues;
+
+    if (selectedCategory !== "All") {
+      filtered = filtered.filter((issue) => issue.category === selectedCategory);
+    }
+
+    if (selectedStatus !== "All") {
+      filtered = filtered.filter((issue) => issue.status === selectedStatus);
+    }
+
+    setFilteredIssues(filtered);
+  };
+
+  const handleStatusChange = (issueId: string, newStatus: string) => {
+    const updated = updateIssue(issueId, {
+      status: newStatus as "reported" | "in-progress" | "resolved",
     });
+    if (updated) {
+      loadIssues();
+    }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center text-muted-foreground">
-        <Loader2 className="w-10 h-10 animate-spin text-primary mb-4" />
-        <p className="font-medium">Loading administrative dashboard...</p>
-      </div>
-    );
-  }
+  const handleDeleteIssue = (issueId: string) => {
+    if (window.confirm("Are you sure you want to delete this issue?")) {
+      deleteIssue(issueId);
+      loadIssues();
+    }
+  };
+
+  const handleStartEdit = (issue: CivicIssue) => {
+    setEditingId(issue.id);
+    setEditData({ ...issue });
+  };
+
+  const handleSaveEdit = (issueId: string) => {
+    const updated = updateIssue(issueId, editData);
+    if (updated) {
+      setEditingId(null);
+      setEditData({});
+      loadIssues();
+    }
+  };
+
+  const handleUpdateCredentials = () => {
+    if (newCredentials.username && newCredentials.password) {
+      updateAdminCredentials(newCredentials.username, newCredentials.password);
+      alert("Admin credentials updated successfully!");
+      setShowCredentialModal(false);
+      setNewCredentials({ username: "", password: "" });
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "resolved":
+        return "bg-green-100 text-green-800";
+      case "in-progress":
+        return "bg-orange-100 text-orange-800";
+      case "reported":
+      default:
+        return "bg-blue-100 text-blue-800";
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "resolved":
+        return "✅";
+      case "in-progress":
+        return "⏳";
+      case "reported":
+      default:
+        return "🔔";
+    }
+  };
 
   return (
-    <div className="max-w-[90rem] mx-auto px-4 sm:px-6 lg:px-8 py-10">
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
+    <div className="container max-w-7xl mx-auto px-4 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-extrabold text-foreground tracking-tight mb-2">Master Dashboard</h1>
-          <p className="text-muted-foreground text-lg">Manage, track, and update all civic issues.</p>
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-green-600 bg-clip-text text-transparent mb-2">
+            Admin Dashboard
+          </h1>
+          <p className="text-gray-600">
+            Manage and resolve civic issues reported by the community
+          </p>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-border shadow-sm">
-            <Filter className="w-4 h-4 text-muted-foreground" />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] border-0 bg-transparent shadow-none focus:ring-0">
-                <SelectValue placeholder="All Statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="reported">Reported</SelectItem>
-                <SelectItem value="in-progress">In Progress</SelectItem>
-                <SelectItem value="resolved">Resolved</SelectItem>
-              </SelectContent>
-            </Select>
+        <div className="flex gap-4">
+          <button
+            onClick={() => setShowCredentialModal(true)}
+            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+          >
+            🔐 Change Credentials
+          </button>
+          <button
+            onClick={onLogout}
+            className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+          >
+            🚪 Logout
+          </button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="bg-white border rounded-lg p-6 text-center shadow-sm">
+          <div className="text-3xl font-bold text-blue-600 mb-2">
+            {issues.length}
           </div>
-          
-          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-border shadow-sm">
-            <Search className="w-4 h-4 text-muted-foreground" />
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-[180px] border-0 bg-transparent shadow-none focus:ring-0">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Categories</SelectItem>
-                {CATEGORIES.map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="text-sm text-gray-600">Total Issues</div>
+        </div>
+        <div className="bg-white border rounded-lg p-6 text-center shadow-sm">
+          <div className="text-3xl font-bold text-blue-500 mb-2">
+            {issues.filter((i) => i.status === "reported").length}
+          </div>
+          <div className="text-sm text-gray-600">Reported</div>
+        </div>
+        <div className="bg-white border rounded-lg p-6 text-center shadow-sm">
+          <div className="text-3xl font-bold text-orange-500 mb-2">
+            {issues.filter((i) => i.status === "in-progress").length}
+          </div>
+          <div className="text-sm text-gray-600">In Progress</div>
+        </div>
+        <div className="bg-white border rounded-lg p-6 text-center shadow-sm">
+          <div className="text-3xl font-bold text-green-600 mb-2">
+            {issues.filter((i) => i.status === "resolved").length}
+          </div>
+          <div className="text-sm text-gray-600">Resolved</div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="bg-white border rounded-lg p-6 mb-6 shadow-sm">
+        <h3 className="text-lg font-semibold mb-4">Filters</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Category</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+            >
+              {categories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Status</label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+            >
+              {statuses.map((status) => (
+                <option key={status} value={status}>
+                  {status === "All" ? "All Statuses" : status}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-border shadow-sm overflow-x-auto">
-        <table className="w-full text-left text-sm whitespace-nowrap">
-          <thead className="bg-slate-50 border-b border-border uppercase tracking-wider text-muted-foreground font-bold text-xs">
-            <tr>
-              <th className="px-6 py-4">ID</th>
-              <th className="px-6 py-4">Issue Details</th>
-              <th className="px-6 py-4">Category</th>
-              <th className="px-6 py-4">Status & Upvotes</th>
-              <th className="px-6 py-4 w-64">Admin Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {data?.issues.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-muted-foreground">
-                  No issues found matching the selected filters.
-                </td>
-              </tr>
-            ) : (
-              data?.issues.map((issue) => {
-                const isEditing = editingId === issue.id;
-                const statusCfg = STATUS_CONFIG[issue.status as keyof typeof STATUS_CONFIG];
-                
-                return (
-                  <tr key={issue.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4 font-mono font-semibold text-slate-500">#{issue.id}</td>
-                    <td className="px-6 py-4 max-w-sm whitespace-normal">
-                      <p className="font-bold text-foreground line-clamp-1">{issue.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">By: {issue.reporterName} • {format(new Date(issue.submittedAt), 'MMM d, yyyy')}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">PIN: {issue.digiPin}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge variant="outline" className="bg-slate-50 text-slate-600 border-slate-200">
-                        {issue.category}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-2 items-start">
-                        {!isEditing ? (
-                          <Badge variant="secondary" className={`${statusCfg.color}`}>
-                            {statusCfg.label}
-                          </Badge>
-                        ) : (
-                          <Select value={editStatus} onValueChange={setEditStatus}>
-                            <SelectTrigger className="w-[140px] h-8 bg-white">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="reported">Reported</SelectItem>
-                              <SelectItem value="in-progress">In Progress</SelectItem>
-                              <SelectItem value="resolved">Resolved</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        )}
-                        <span className="text-xs font-semibold text-slate-500 flex items-center">
-                          👍 {issue.reportCount} Upvotes
-                        </span>
+      {/* Issues List */}
+      <div className="bg-white border rounded-lg shadow-sm">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">
+            Issues ({filteredIssues.length})
+          </h3>
+        </div>
+
+        <div className="divide-y">
+          {filteredIssues.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">
+              <p className="text-lg">No issues found</p>
+            </div>
+          ) : (
+            filteredIssues.map((issue) => (
+              <div key={issue.id} className="p-6 hover:bg-gray-50 transition">
+                {editingId === issue.id ? (
+                  // Edit Mode
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Title
+                        </label>
+                        <input
+                          type="text"
+                          value={editData.title || ""}
+                          onChange={(e) =>
+                            setEditData((prev) => ({
+                              ...prev,
+                              title: e.target.value,
+                            }))
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        />
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      {isEditing ? (
-                        <div className="flex items-center gap-2">
-                          <Input 
-                            value={editNotes} 
-                            onChange={(e) => setEditNotes(e.target.value)} 
-                            placeholder="Add resolution notes..." 
-                            className="h-8 bg-white w-48"
+                      <div>
+                        <label className="block text-sm font-medium mb-2">
+                          Status
+                        </label>
+                        <select
+                          value={editData.status || "reported"}
+                          onChange={(e) =>
+                            setEditData((prev) => ({
+                              ...prev,
+                              status: e.target.value as any,
+                            }))
+                          }
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="reported">Reported</option>
+                          <option value="in-progress">In Progress</option>
+                          <option value="resolved">Resolved</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-2">
+                        Admin Notes
+                      </label>
+                      <textarea
+                        value={editData.adminNotes || ""}
+                        onChange={(e) =>
+                          setEditData((prev) => ({
+                            ...prev,
+                            adminNotes: e.target.value,
+                          }))
+                        }
+                        className="w-full p-2 border border-gray-300 rounded-md"
+                        rows={3}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleSaveEdit(issue.id)}
+                        className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditData({});
+                        }}
+                        className="px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  // View Mode
+                  <>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h4 className="font-semibold text-lg mb-2">
+                          {issue.title}
+                        </h4>
+                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                          <span>ID: {issue.id}</span>
+                          <span>📅 {new Date(issue.submittedAt).toLocaleDateString()}</span>
+                          <span>
+                            <span
+                              className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(
+                                issue.status
+                              )}`}
+                            >
+                              {getStatusIcon(issue.status)} {issue.status}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 bg-gray-50 p-4 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-600">Category</p>
+                        <p className="font-medium">{issue.category}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Location</p>
+                        <p className="font-medium">{issue.location || "N/A"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">DIGIPIN</p>
+                        <p className="font-medium">{issue.digiPin}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Reported By</p>
+                        <p className="font-medium">{issue.name}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Email</p>
+                        <p className="font-medium text-blue-600">{issue.email}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Contact</p>
+                        <p className="font-medium">{issue.contact}</p>
+                      </div>
+                    </div>
+
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600 mb-2">Description</p>
+                      <p className="text-gray-800">{issue.description}</p>
+                    </div>
+
+                    {issue.imageData && (
+                      <div className="mb-4">
+                        <p className="text-sm text-gray-600 mb-2">Attached Image/Video</p>
+                        {issue.imageType?.startsWith("video/") ? (
+                          <video
+                            src={issue.imageData}
+                            controls
+                            className="w-full max-h-64 rounded-lg border border-gray-300"
                           />
-                          <Button 
-                            size="sm" 
-                            onClick={() => handleSave(issue.id)}
-                            disabled={updateMutation.isPending}
-                            className="h-8"
-                          >
-                            <Save className="w-4 h-4 mr-1" /> Save
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-8" onClick={() => setEditingId(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-4 justify-between w-full">
-                          <p className="text-xs text-muted-foreground truncate max-w-[180px]" title={issue.adminNotes || "No notes"}>
-                            {issue.adminNotes || <span className="italic">No admin notes</span>}
-                          </p>
-                          <Button size="sm" variant="outline" onClick={() => handleEdit(issue)}>
-                            Update
-                          </Button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                        ) : (
+                          <img
+                            src={issue.imageData}
+                            alt="Issue"
+                            className="w-full max-h-64 object-cover rounded-lg border border-gray-300"
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {issue.adminNotes && (
+                      <div className="mb-4 bg-blue-50 border border-blue-200 p-3 rounded-lg">
+                        <p className="text-sm text-gray-600 mb-1">Admin Notes</p>
+                        <p className="text-gray-800">{issue.adminNotes}</p>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 pt-4 border-t">
+                      <select
+                        value={issue.status}
+                        onChange={(e) =>
+                          handleStatusChange(issue.id, e.target.value)
+                        }
+                        className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="reported">Reported</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                      </select>
+                      <button
+                        onClick={() => handleStartEdit(issue)}
+                        className="px-4 py-2 bg-blue-500 text-white text-sm rounded-md hover:bg-blue-600"
+                      >
+                        ✏️ Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteIssue(issue.id)}
+                        className="px-4 py-2 bg-red-500 text-white text-sm rounded-md hover:bg-red-600"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      {/* Change Credentials Modal */}
+      {showCredentialModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold mb-4">Change Admin Credentials</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  New Username
+                </label>
+                <input
+                  type="text"
+                  value={newCredentials.username}
+                  onChange={(e) =>
+                    setNewCredentials((prev) => ({
+                      ...prev,
+                      username: e.target.value,
+                    }))
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter new username"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={newCredentials.password}
+                  onChange={(e) =>
+                    setNewCredentials((prev) => ({
+                      ...prev,
+                      password: e.target.value,
+                    }))
+                  }
+                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div className="flex gap-2 pt-4">
+                <button
+                  onClick={handleUpdateCredentials}
+                  className="flex-1 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 font-medium"
+                >
+                  Update
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCredentialModal(false);
+                    setNewCredentials({ username: "", password: "" });
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-500 text-white rounded-md hover:bg-gray-600 font-medium"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -276,6 +276,30 @@ router.get("/admin/issues", async (req, res) => {
   }
 });
 
+// DELETE /api/issues/:id - Delete an issue (admin)
+router.delete("/issues/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: "invalid_id", message: "Invalid issue ID" });
+    }
+
+    const [deleted] = await db
+      .delete(issuesTable)
+      .where(eq(issuesTable.id, id))
+      .returning();
+
+    if (!deleted) {
+      return res.status(404).json({ error: "not_found", message: "Issue not found" });
+    }
+
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "server_error", message: "Failed to delete issue" });
+  }
+});
+
 function formatIssue(issue: any) {
   return {
     id: issue.id,
