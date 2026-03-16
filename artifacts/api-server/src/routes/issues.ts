@@ -1,7 +1,7 @@
-import { Router, type IRouter } from "express";
+import { Router } from "express";
 import { Issue } from "../db/IssueModel";
 
-const router: IRouter = Router();
+const router = Router();
 
 function formatIssue(issue: any) {
   return {
@@ -17,16 +17,18 @@ function formatIssue(issue: any) {
     status: issue.status,
     reportCount: issue.reportCount,
     adminNotes: issue.adminNotes ?? null,
-    submittedAt: issue.submittedAt instanceof Date
-      ? issue.submittedAt.toISOString()
-      : issue.submittedAt,
-    resolvedAt: issue.resolvedAt instanceof Date
-      ? issue.resolvedAt.toISOString()
-      : issue.resolvedAt ?? null,
+    submittedAt:
+      issue.submittedAt instanceof Date
+        ? issue.submittedAt.toISOString()
+        : issue.submittedAt,
+    resolvedAt:
+      issue.resolvedAt instanceof Date
+        ? issue.resolvedAt.toISOString()
+        : issue.resolvedAt ?? null,
   };
 }
 
-// GET /api/issues - Community feed
+// GET /api/issues
 router.get("/issues", async (req, res) => {
   try {
     const { status, category, limit = "50", offset = "0" } = req.query as any;
@@ -43,14 +45,16 @@ router.get("/issues", async (req, res) => {
       Issue.countDocuments(filter),
     ]);
 
-    res.json({ issues: issues.map(formatIssue), total });
+    return res.json({ issues: issues.map(formatIssue), total });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to fetch issues" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to fetch issues" });
   }
 });
 
-// POST /api/issues - Report a new issue
+// POST /api/issues
 router.post("/issues", async (req, res) => {
   try {
     const {
@@ -64,11 +68,20 @@ router.post("/issues", async (req, res) => {
       reporterContact,
     } = req.body;
 
-    if (!title || !category || !description || !digiPin || !reporterName || !reporterEmail || !reporterContact) {
-      return res.status(400).json({ error: "validation_error", message: "Missing required fields" });
+    if (
+      !title ||
+      !category ||
+      !description ||
+      !digiPin ||
+      !reporterName ||
+      !reporterEmail ||
+      !reporterContact
+    ) {
+      return res
+        .status(400)
+        .json({ error: "validation_error", message: "Missing required fields" });
     }
 
-    // Check for duplicate (same digiPin + category, not yet resolved)
     const existing = await Issue.findOne({
       digiPin,
       category,
@@ -96,28 +109,36 @@ router.post("/issues", async (req, res) => {
       submittedAt: new Date(),
     });
 
-    res.status(201).json({ issue: formatIssue(newIssue) });
+    return res.status(201).json({ issue: formatIssue(newIssue) });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to create issue" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to create issue" });
   }
 });
 
-// GET /api/issues/:id
+// GET issue by id
 router.get("/issues/:id", async (req, res) => {
   try {
     const issue = await Issue.findById(req.params.id).lean();
+
     if (!issue) {
-      return res.status(404).json({ error: "not_found", message: "Issue not found" });
+      return res
+        .status(404)
+        .json({ error: "not_found", message: "Issue not found" });
     }
-    res.json({ issue: formatIssue(issue) });
+
+    return res.json({ issue: formatIssue(issue) });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to fetch issue" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to fetch issue" });
   }
 });
 
-// POST /api/issues/:id/upvote - Increment report count
+// UPVOTE
 router.post("/issues/:id/upvote", async (req, res) => {
   try {
     const issue = await Issue.findByIdAndUpdate(
@@ -127,25 +148,33 @@ router.post("/issues/:id/upvote", async (req, res) => {
     ).lean();
 
     if (!issue) {
-      return res.status(404).json({ error: "not_found", message: "Issue not found" });
+      return res
+        .status(404)
+        .json({ error: "not_found", message: "Issue not found" });
     }
-    res.json({ issue: formatIssue(issue) });
+
+    return res.json({ issue: formatIssue(issue) });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to upvote issue" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to upvote issue" });
   }
 });
 
-// PATCH /api/issues/:id/status - Admin update status
+// UPDATE STATUS
 router.patch("/issues/:id/status", async (req, res) => {
   try {
     const { status, adminNotes } = req.body;
 
     if (!status || !["reported", "in-progress", "resolved"].includes(status)) {
-      return res.status(400).json({ error: "validation_error", message: "Invalid status" });
+      return res
+        .status(400)
+        .json({ error: "validation_error", message: "Invalid status" });
     }
 
     const updateData: any = { status };
+
     if (adminNotes !== undefined) updateData.adminNotes = adminNotes;
     if (status === "resolved") updateData.resolvedAt = new Date();
 
@@ -156,124 +185,51 @@ router.patch("/issues/:id/status", async (req, res) => {
     ).lean();
 
     if (!issue) {
-      return res.status(404).json({ error: "not_found", message: "Issue not found" });
+      return res
+        .status(404)
+        .json({ error: "not_found", message: "Issue not found" });
     }
-    res.json({ issue: formatIssue(issue) });
+
+    return res.json({ issue: formatIssue(issue) });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to update status" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to update status" });
   }
 });
 
-// DELETE /api/issues/:id - Delete an issue (admin)
+// DELETE ISSUE
 router.delete("/issues/:id", async (req, res) => {
   try {
     const issue = await Issue.findByIdAndDelete(req.params.id).lean();
+
     if (!issue) {
-      return res.status(404).json({ error: "not_found", message: "Issue not found" });
+      return res
+        .status(404)
+        .json({ error: "not_found", message: "Issue not found" });
     }
-    res.json({ success: true, id: req.params.id });
+
+    return res.json({ success: true, id: req.params.id });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to delete issue" });
+    return res
+      .status(500)
+      .json({ error: "server_error", message: "Failed to delete issue" });
   }
 });
 
-// GET /api/leaderboard
-router.get("/leaderboard", async (_req, res) => {
-  try {
-    const rows = await Issue.aggregate([
-      {
-        $group: {
-          _id: { reporterEmail: "$reporterEmail", reporterName: "$reporterName" },
-          reportCount: { $sum: 1 },
-          resolvedCount: {
-            $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] },
-          },
-        },
-      },
-      { $sort: { reportCount: -1 } },
-      { $limit: 20 },
-    ]);
-
-    const entries = rows.map((row, idx) => ({
-      rank: idx + 1,
-      reporterName: row._id.reporterName,
-      reporterEmail: row._id.reporterEmail,
-      reportCount: row.reportCount,
-      resolvedCount: row.resolvedCount,
-      points: row.reportCount * 50 + row.resolvedCount * 100,
-    }));
-
-    res.json({ entries });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to fetch leaderboard" });
-  }
-});
-
-// GET /api/stats
-router.get("/stats", async (_req, res) => {
-  try {
-    const [totals, categoryBreakdown] = await Promise.all([
-      Issue.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: 1 },
-            resolved: { $sum: { $cond: [{ $eq: ["$status", "resolved"] }, 1, 0] } },
-            inProgress: { $sum: { $cond: [{ $eq: ["$status", "in-progress"] }, 1, 0] } },
-            reported: { $sum: { $cond: [{ $eq: ["$status", "reported"] }, 1, 0] } },
-          },
-        },
-      ]),
-      Issue.aggregate([
-        { $group: { _id: "$category", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $project: { _id: 0, category: "$_id", count: 1 } },
-      ]),
-    ]);
-
-    const stats = totals[0] ?? { total: 0, resolved: 0, inProgress: 0, reported: 0 };
-
-    res.json({
-      totalReports: stats.total,
-      resolvedCount: stats.resolved,
-      inProgressCount: stats.inProgress,
-      reportedCount: stats.reported,
-      categoryBreakdown,
-    });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to fetch stats" });
-  }
-});
-
-// POST /api/admin/login
+// ADMIN LOGIN
 router.post("/admin/login", (req, res) => {
   const { username, password } = req.body;
+
   if (username === "admin" && password === "admin123") {
-    res.json({ success: true, token: "admin-token-civic-2024" });
-  } else {
-    res.status(401).json({ error: "unauthorized", message: "Invalid credentials" });
+    return res.json({ success: true, token: "admin-token-civic-2024" });
   }
-});
 
-// GET /api/admin/issues
-router.get("/admin/issues", async (req, res) => {
-  try {
-    const { status, category } = req.query as any;
-
-    const filter: any = {};
-    if (status) filter.status = status;
-    if (category) filter.category = category;
-
-    const issues = await Issue.find(filter).sort({ submittedAt: -1 }).lean();
-    res.json({ issues: issues.map(formatIssue), total: issues.length });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "server_error", message: "Failed to fetch issues" });
-  }
+  return res
+    .status(401)
+    .json({ error: "unauthorized", message: "Invalid credentials" });
 });
 
 export default router;
